@@ -316,17 +316,22 @@ function audio(){
     if(AC.state==='suspended')AC.resume();}catch(e){}
   return AC;
 }
-function clack(at,vol,pitch){ // удар кости о дерево
+function clack(at,vol,pitch){ // чёткий удар кости о дерево
   const ac=audio();if(!ac)return;const t=ac.currentTime+at;
-  // щелчок кости
-  const n=ac.createBufferSource();n.buffer=NB;n.playbackRate.value=.85+Math.random()*.3;
-  const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=(2300+Math.random()*900)*pitch;bp.Q.value=4.5;
-  const g=ac.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.9*vol,t+.002);g.gain.exponentialRampToValueAtTime(.001,t+.07);
-  n.connect(bp).connect(g).connect(ac.destination);n.start(t);n.stop(t+.1);
-  // глухой отзвук доски
-  const o=ac.createOscillator();o.type='sine';o.frequency.setValueAtTime(190*pitch,t);o.frequency.exponentialRampToValueAtTime(120*pitch,t+.08);
-  const g2=ac.createGain();g2.gain.setValueAtTime(0,t);g2.gain.linearRampToValueAtTime(.55*vol,t+.003);g2.gain.exponentialRampToValueAtTime(.001,t+.12);
-  o.connect(g2).connect(ac.destination);o.start(t);o.stop(t+.14);
+  // резкий щелчок
+  const n=ac.createBufferSource();n.buffer=NB;n.playbackRate.value=1+Math.random()*.4;
+  const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=1800;
+  const bp=ac.createBiquadFilter();bp.type='peaking';bp.frequency.value=(4200+Math.random()*1200)*pitch;bp.Q.value=2;bp.gain.value=10;
+  const g=ac.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.0008);g.gain.exponentialRampToValueAtTime(.001,t+.028);
+  n.connect(hp).connect(bp).connect(g).connect(ac.destination);n.start(t);n.stop(t+.05);
+  // звонкий «тик» самой кости
+  for(const[f,a]of[[3100,.35],[5300,.18]]){const o=ac.createOscillator();o.type='sine';o.frequency.value=f*pitch*(.95+Math.random()*.1);
+    const go=ac.createGain();go.gain.setValueAtTime(0,t);go.gain.linearRampToValueAtTime(a*vol,t+.001);go.gain.exponentialRampToValueAtTime(.001,t+.045);
+    o.connect(go).connect(ac.destination);o.start(t);o.stop(t+.06)}
+  // лёгкий отзвук доски (совсем немного)
+  const o=ac.createOscillator();o.type='triangle';o.frequency.setValueAtTime(420*pitch,t);o.frequency.exponentialRampToValueAtTime(300*pitch,t+.04);
+  const g2=ac.createGain();g2.gain.setValueAtTime(0,t);g2.gain.linearRampToValueAtTime(.12*vol,t+.002);g2.gain.exponentialRampToValueAtTime(.001,t+.05);
+  o.connect(g2).connect(ac.destination);o.start(t);o.stop(t+.06);
 }
 function rollSound(dur){
   const T=dur/1000;
@@ -493,7 +498,7 @@ if(!G.over){
 }
 </script>
 <script>
-const VER='19';
+const VER='20';
 function checkVer(){fetch('../version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('nardy_upd')===v)return;sessionStorage.setItem('nardy_upd',v)}catch(_){}
