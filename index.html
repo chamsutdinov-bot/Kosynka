@@ -148,7 +148,7 @@ function mv(f,i,d){
 }
 function drawStock(){
   if(auto||S.won)return;
-  if(S.p.st.length){snap();for(let k=0;k<3&&S.p.st.length;k++){const c=S.p.st.pop();S.up[c]=true;S.p.wa.push(c);MV.add(c)}}
+  if(S.p.st.length){snap();for(let k=0;k<1&&S.p.st.length;k++){const c=S.p.st.pop();S.up[c]=true;S.p.wa.push(c);MV.add(c)}}
   else if(S.p.wa.length){snap();S.p.st=S.p.wa.reverse();S.p.st.forEach(c=>S.up[c]=false);S.p.wa=[];}
   else return;
   counted();S.moves++;render();save();
@@ -230,7 +230,7 @@ function render(){
     if(e._d===undefined)e.classList.toggle('d',dn);else if(e._d!==dn)e.classList.toggle('d',dn);e._d=dn};
   const ks=L.land?1:L.k;for(const p of P.slice(2,6))for(const id of S.p[p])put(id,L[p].x,L[p].y,ks);
   for(const id of S.p.st)put(id,L.st.x,L.st.y,ks);
-  const w=S.p.wa,fan=w.length-Math.min(3,w.length);
+  const w=S.p.wa,fan=w.length-Math.min(1,w.length);
   w.forEach((id,k)=>{const o=Math.max(0,k-fan);put(id,L.wa.x+(L.land?0:o*L.tw*.42),L.wa.y+(L.land?o*L.ch*.2:0),ks)});
   for(const p of TP){
     const a=S.p[p];let od=L.ch*.12,ou=L.ch*(L.land?.28:.33);
@@ -299,7 +299,7 @@ if(load()){render();if(!S.won)check()}else newGame();
 }
 </script>
 <script>
-const VER='6';
+const VER='7';
 function checkVer(){fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('kos_upd')===v)return;sessionStorage.setItem('kos_upd',v)}catch(_){}
