@@ -1,6 +1,6 @@
 // Офлайн-кэш «Косынки»: страница открывается сразу из памяти телефона,
 // новая версия скачивается в фоне, и открытая игра сама перезагружается (партия сохраняется).
-const C = 'kosynka-v1';
+const C = 'kosynka-v2';
 const SCOPE = self.registration.scope;
 const PAGE = SCOPE;
 const CORE = [SCOPE, SCOPE + 'index.html', SCOPE + 'apple-touch-icon.png'];
@@ -32,6 +32,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (url.pathname.endsWith('version.txt')) return;
   if (req.mode === 'navigate') {
     e.respondWith(caches.open(C).then(async c => {
       const hit = await c.match(PAGE) || await c.match(SCOPE + 'index.html');
