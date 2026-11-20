@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Нарды">
+<meta name="theme-color" content="#3a1606">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<title>Нарды</title>
+<style>
+/* VOICE: спокойная настольная игра
+   IDEA: деревянный складной ящик для нард на весь экран
+   PICTURE: сама доска — светлое дерево, чёрные лунки, деревянные шашки
+   COLOUR and TYPE: светлый клён, рама красного дерева, латунь; системный шрифт
+   LAYOUT: доска во весь экран, всегда лёжа (боком); меню — по нажатию на перемычку */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#3a1606;touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+body{font:15px/1.3 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;color:#fff}
+#app{position:fixed;left:0;top:0;transform-origin:0 0;overflow:hidden}
+svg#b{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ov{position:absolute;inset:0;background:rgba(0,0,0,.25);display:none;place-items:center;z-index:20}
+.ov.on{display:grid}
+.pop{width:min(300px,80%);border-radius:22px;padding:16px 18px;text-align:center;color:#fff;
+background:rgba(255,255,255,.2);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
+border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 12px 40px rgba(0,0,0,.35)}
+.pop h2{margin:0 0 10px;font-size:19px}
+.pop p{margin:0 0 12px;font-size:14px;color:rgba(255,255,255,.9)}
+.go{display:block;width:100%;height:42px;margin-top:8px;border-radius:12px;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.22);color:#fff;font:600 15px -apple-system,system-ui,sans-serif;cursor:pointer}
+.go:active{background:rgba(255,255,255,.35)}
+.go:disabled{opacity:.4}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 2px;font-size:14px;text-align:left}
+.seg{display:flex;background:rgba(255,255,255,.18);border-radius:9px;padding:2px}
+.seg button{border:0;background:none;font:600 13px -apple-system,system-ui,sans-serif;padding:7px 10px;border-radius:7px;color:#fff;cursor:pointer}
+.seg button.on{background:rgba(255,255,255,.5);color:#2a1206}
+#toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:10px 18px;border-radius:14px;font-weight:600;font-size:15px;z-index:15;
+background:rgba(30,12,2,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.3);opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+#fw{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:30;display:none}
+</style></head><body>
+<div id="app">
+  <svg id="b" xmlns="http://www.w3.org/2000/svg"><g id="board"></g><g id="hl"></g><g id="cks"></g><g id="dice"></g><g id="txt"></g></svg>
+  <div id="toast"></div>
+  <div class="ov" id="om"><div class="pop"><h2>Нарды</h2>
+    <button class="go" id="mNew">Новая игра</button>
+    <button class="go" id="mK">Косынка</button>
+    <button class="go" id="mUndo">Отменить ход</button>
+    <div class="row">Противник<div class="seg" id="mMode"><button data-v="ai">Компьютер</button><button data-v="pvp">Вдвоём</button></div></div>
+  </div></div>
+  <div class="ov" id="oc"><div class="pop"><h2>Начать новую игру?</h2><p>Текущая партия будет потеряна</p>
+    <div style="display:flex;gap:8px"><button class="go" id="cNo">Отмена</button><button class="go" id="cYes">Новая</button></div></div></div>
+  <div class="ov" id="ow"><div class="pop"><h2 id="wT">Победа!</h2><p id="wP"></p><button class="go" id="wNew">Играть ещё</button></div></div>
+  <canvas id="fw"></canvas>
+</div>
+<script>
+{
+const $=id=>document.getElementById(id);
+const NS='http://www.w3.org/2000/svg';
+const APP=$('app'),SV=$('b'),GB=$('board'),GH=$('hl'),GC=$('cks'),GD=$('dice'),GT=$('txt');
+const other=c=>c==='L'?'D':'L';
+const colOf=id=>id<15?'L':'D';
+const tOf=(c,a)=>c==='L'?a:(a+12)%24;
+const aOf=(c,t)=>c==='L'?t:(t+12)%24;
+
+/* ---------- правила (длинные нарды) ---------- */
+// cnt[a]: >0 — светлые (L), <0 — тёмные (D); off: сколько выброшено
+function own(cnt,a,c){return c==='L'?cnt[a]>0:cnt[a]<0}
+function opp(cnt,a,c){return c==='L'?cnt[a]<0:cnt[a]>0}
+function allHome(cnt,c){for(let a=0;a<24;a++)if(own(cnt,a,c)&&tOf(c,a)<18)return false;return true}
+function blockBad(cnt,c){
+  const o=other(c);let oppOn=false;for(let a=0;a<24;a++)if(own(cnt,a,o)){oppOn=true;break}
+  if(!oppOn)return false;
+  for(let s=0;s<24;s++){
+    let ok=true;for(let k=0;k<6;k++)if(!own(cnt,(s+k)%24,c)){ok=false;break}
+    if(!ok)continue;
+    const ts=[];for(let k=0;k<6;k++)ts.push(tOf(o,(s+k)%24));
+    let inc=true;for(let k=1;k<6;k++)if(ts[k]!==ts[k-1]+1){inc=false;break}
+    if(!inc)continue;
+    const mx=ts[5];let ahead=false;
+    for(let a=0;a<24;a++)if(own(cnt,a,o)&&tOf(o,a)>mx){ahead=true;break}
+    if(!ahead)return true;
+  }
+  return false;
+}
+function applyStep(cnt,c,a,to){const n=cnt.slice(),s=c==='L'?1:-1;n[a]-=s;if(to!=='off')n[to]+=s;return n}
+function canStep(cnt,c,a,d,headUsed,headLimit){
+  if(!own(cnt,a,c))return null;
+  const t=tOf(c,a);if(t===0&&headUsed>=headLimit)return null;
+  const t2=t+d;
+  if(t2<=23){const a2=aOf(c,t2);if(opp(cnt,a2,c))return null;if(blockBad(applyStep(cnt,c,a,a2),c))return null;return a2}
+  if(!allHome(cnt,c))return null;
+  if(t2>24){for(let a3=0;a3<24;a3++)if(own(cnt,a3,c)&&tOf(c,a3)<t)return null}
+  return 'off';
+}
+function uniq(arr){return[...new Set(arr)]}
+function removeOne(arr,v){const i=arr.indexOf(v),r=arr.slice();r.splice(i,1);return r}
+function depth(cnt,c,dice,hu,hl,memo){
+  if(!dice.length)return 0;
+  const key=cnt.join(',')+'|'+dice.join('')+'|'+hu;if(memo.has(key))return memo.get(key);
+  let best=0;
+  for(const v of uniq(dice))for(let a=0;a<24;a++){
+    const to=canStep(cnt,c,a,v,hu,hl);if(to===null)continue;
+    const d=1+depth(applyStep(cnt,c,a,to),c,removeOne(dice,v),hu+(tOf(c,a)===0?1:0),hl,memo);
+    if(d>best){best=d;if(best===dice.length)break}
+  }
+  memo.set(key,best);return best;
+}
+function legalSteps(cnt,c,dice,hu,hl){
+  const memo=new Map(),cand=[];let mx=0;
+  for(const v of uniq(dice))for(let a=0;a<24;a++){
+    const to=canStep(cnt,c,a,v,hu,hl);if(to===null)continue;
+    const d=1+depth(applyStep(cnt,c,a,to),c,removeOne(dice,v),hu+(tOf(c,a)===0?1:0),hl,memo);
+    cand.push({a,v,to,d});if(d>mx)mx=d;
+  }
+  let r=cand.filter(x=>x.d===mx);
+  if(mx===1&&dice.length===2&&dice[0]!==dice[1]){const big=Math.max(...dice),bb=r.filter(x=>x.v===big);if(bb.length)r=bb}
+  return r;
+}
+/* ---------- компьютер ---------- */
+function evalPos(cnt,off,c){
+  const o=other(c);let s=0,run=0,head=0;
+  for(let a=0;a<24;a++){
+    if(own(cnt,a,c)){const n=Math.abs(cnt[a]),t=tOf(c,a);s+=n*t*1.0;if(t>=18)s+=n*1.2;if(t===0)head=n;else s+=2.2;if(n>3&&t!==0)s-=(n-3)*1.2;
+      run++;if(run>=2)s+=1.4*Math.min(run,5)}else run=0;
+  }
+  s+=off*30;s-=head>1?(head-1)*1.6:0;
+  // мешаем сопернику: свои точки прямо перед его шашками
+  for(let a=0;a<24;a++)if(own(cnt,a,o)){const t=tOf(o,a);for(let k=1;k<=6;k++){const t2=t+k;if(t2<=23&&own(cnt,aOf(o,t2),c))s+=.35}}
+  return s+Math.random()*.6;
+}
+function bestSequence(cnt,off,c,dice,hu,hl){
+  const target=legalSteps(cnt,c,dice,hu,hl);if(!target.length)return[];
+  const mx=target[0].d;const seen=new Map();let best=null,bs=-1e9;
+  (function go(cn,of,ds,h,path){
+    if(path.length===mx){const k=cn.join(',');if(seen.has(k))return;seen.set(k,1);const sc=evalPos(cn,of,c);if(sc>bs){bs=sc;best=path}return}
+    const opts=path.length===0?target:legalSteps(cn,c,ds,h,hl);
+    for(const st of opts){go(applyStep(cn,c,st.a,st.to),of+(st.to==='off'?1:0),removeOne(ds,st.v),h+(tOf(c,st.a)===0?1:0),path.concat([st]))}
+  })(cnt,off,dice,hu,[]);
+  return best||[];
+}
+
+/* ---------- состояние ---------- */
+let G,undo=[],sel=null,legal=[],busy=false,R={};
+function newState(mode){
+  const pts=Array.from({length:24},()=>[]);
+  for(let i=0;i<15;i++)pts[0].push(i);for(let i=15;i<30;i++)pts[12].push(i);
+  return{pts,off:{L:[],D:[]},turn:Math.random()<.5?'L':'D',dice:[],left:[],rolled:false,hu:0,first:{L:true,D:true},mode:mode||'ai',over:false};
+}
+function cntOf(){const c=new Array(24).fill(0);G.pts.forEach((ids,a)=>{for(const id of ids)c[a]+=colOf(id)==='L'?1:-1});return c}
+function headLimit(c){return G.first[c]&&G.dice.length===2&&G.dice[0]===G.dice[1]&&[3,4,6].includes(G.dice[0])?2:1}
+function save(){try{localStorage.setItem('nardy1',JSON.stringify(G))}catch(e){}}
+function load(){try{const o=JSON.parse(localStorage.getItem('nardy1'));if(o&&o.pts&&o.pts.length===24){G=o;return true}}catch(e){}return false}
+const human=c=>G.mode==='pvp'||c==='L';
+function pip(c){let s=0;G.pts.forEach((ids,a)=>{for(const id of ids)if(colOf(id)===c)s+=24-tOf(c,a)});return s}
+
+/* ---------- геометрия ---------- */
+function geo(){
+  const W=1017,H=Math.round(W*APP.clientHeight/APP.clientWidth);
+  const F=24,BAR=50,hw=(W-2*F-BAR)/2,L0=F,R0=F+hw+BAR,top=F,bot=H-F,ih=H-2*F,pw=hw/6.5,mx=(hw-6*pw)/2,cr=pw*.47;
+  R={W,H,F,BAR,hw,L0,R0,top,bot,ih,pw,mx,cr,bx:F+hw};
+  SV.setAttribute('viewBox',`0 0 ${W} ${H}`);
+}
+function colX(a){const col=a<12?a:23-a;return(col<6?R.L0:R.R0)+R.mx+(col%6)*R.pw}
+function isTop(a){return a>=12}
+function stackPos(a,k,n){
+  const x=colX(a)+R.pw/2,maxL=R.ih*.47,th=R.cr*.24;
+  const step=n>1?Math.min(2*R.cr*.98,(maxL-2*R.cr-th)/(n-1)):0;
+  const y=isTop(a)?R.top+R.cr+3+th+k*step:R.bot-R.cr-3-th-k*step;
+  return{x,y};
+}
+
+/* ---------- рисование доски ---------- */
+function drawBoard(){
+  const{W,H,F,BAR,hw,L0,R0,top,bot,ih,pw,mx,bx}=R;let h=`<defs>
+<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4e1b8"/><stop offset=".5" stop-color="#efd7a6"/><stop offset="1" stop-color="#e6c891"/></linearGradient>
+<filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".0025 .055" numOctaves="4" seed="7" result="n"/>
+ <feColorMatrix in="n" type="matrix" values="0 0 0 0 .62  0 0 0 0 .42  0 0 0 0 .18  0 0 -1.6 0 1.05" result="g"/>
+ <feTurbulence type="fractalNoise" baseFrequency=".02 .6" numOctaves="2" seed="3" result="f"/>
+ <feColorMatrix in="f" type="matrix" values="0 0 0 0 .55  0 0 0 0 .38  0 0 0 0 .2  0 0 0 .18 0" result="fib"/>
+ <feMerge><feMergeNode in="g"/><feMergeNode in="fib"/></feMerge><feComposite in2="SourceGraphic" operator="in"/></filter>
+<filter id="grainD" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".003 .07" numOctaves="4" seed="11"/>
+ <feColorMatrix type="matrix" values="0 0 0 0 .18  0 0 0 0 .05  0 0 0 0 .01  0 0 -1.8 0 1.1"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+<linearGradient id="fr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a8501f"/><stop offset=".45" stop-color="#86391a"/><stop offset="1" stop-color="#5e230b"/></linearGradient>
+<linearGradient id="barG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5a2108"/><stop offset=".5" stop-color="#8a3a15"/><stop offset="1" stop-color="#5a2108"/></linearGradient>
+<linearGradient id="inT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(0,0,0,.45)"/><stop offset="1" stop-color="rgba(0,0,0,0)"/></linearGradient>
+<linearGradient id="inL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="rgba(0,0,0,.35)"/><stop offset="1" stop-color="rgba(0,0,0,0)"/></linearGradient>
+<radialGradient id="vig" cx=".5" cy=".5" r=".75"><stop offset=".55" stop-color="rgba(0,0,0,0)"/><stop offset="1" stop-color="rgba(40,15,0,.35)"/></radialGradient>
+<radialGradient id="light" cx=".45" cy=".35" r=".8"><stop offset="0" stop-color="rgba(255,250,235,.28)"/><stop offset="1" stop-color="rgba(255,250,235,0)"/></radialGradient>
+<linearGradient id="pt" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000"/><stop offset=".45" stop-color="#1c1c1c"/><stop offset=".55" stop-color="#262626"/><stop offset="1" stop-color="#050505"/></linearGradient>
+<radialGradient id="cap" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="#fbf0d6"/><stop offset=".8" stop-color="#eed9ac"/><stop offset="1" stop-color="#d9bd86"/></radialGradient>
+<radialGradient id="topL" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#e2b98a"/><stop offset=".55" stop-color="#b47f4c"/><stop offset="1" stop-color="#7c5129"/></radialGradient>
+<radialGradient id="topD" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#8a5640"/><stop offset=".55" stop-color="#55291a"/><stop offset="1" stop-color="#2c120a"/></radialGradient>
+<linearGradient id="sideL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6b4422"/><stop offset=".4" stop-color="#9c6b3d"/><stop offset="1" stop-color="#5a381b"/></linearGradient>
+<linearGradient id="sideD" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1d0b05"/><stop offset=".4" stop-color="#4a2416"/><stop offset="1" stop-color="#170803"/></linearGradient>
+<linearGradient id="silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#b9b9b9"/><stop offset="1" stop-color="#7d7d7d"/></linearGradient>
+<linearGradient id="ebony" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a2210"/><stop offset="1" stop-color="#0d0603"/></linearGradient>
+<linearGradient id="brass" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9c7425"/><stop offset=".3" stop-color="#f6e29a"/><stop offset=".55" stop-color="#d6b25a"/><stop offset="1" stop-color="#8a6418"/></linearGradient>
+<radialGradient id="screw" cx=".35" cy=".35"><stop offset="0" stop-color="#fff3c0"/><stop offset="1" stop-color="#7a5a14"/></radialGradient>
+<linearGradient id="diceG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".6" stop-color="#f1f1f1"/><stop offset="1" stop-color="#cfcfcf"/></linearGradient>
+<radialGradient id="pip" cx=".4" cy=".35"><stop offset="0" stop-color="#3a3a3a"/><stop offset="1" stop-color="#000"/></radialGradient>
+<radialGradient id="cshadow"><stop offset=".55" stop-color="rgba(40,18,0,.45)"/><stop offset="1" stop-color="rgba(40,18,0,0)"/></radialGradient>
+<filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="2" dy="5" stdDeviation="4" flood-color="#2a1200" flood-opacity=".5"/></filter>
+<filter id="sh2" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-opacity=".55"/></filter>
+<symbol id="star" viewBox="-10 -10 20 20"><path d="M0-9.5L1.5-1.5 9.5 0 1.5 1.5 0 9.5-1.5 1.5-9.5 0-1.5-1.5Z"/><path d="M0-6.2L.9-.9 6.2 0 .9.9 0 6.2-.9.9-6.2 0-.9-.9Z" transform="rotate(45)"/></symbol>
+</defs>`;
+  h+=`<rect width="${W}" height="${H}" fill="url(#fr)"/><rect width="${W}" height="${H}" fill="#7a3414" filter="url(#grainD)" opacity=".75"/>`;
+  h+=`<rect x="3" y="3" width="${W-6}" height="${H-6}" rx="4" fill="none" stroke="rgba(255,200,150,.25)" stroke-width="2"/>`;
+  for(const x0 of[L0,R0])h+=`<rect x="${x0}" y="${top}" width="${hw}" height="${ih}" fill="url(#wood)"/><rect x="${x0}" y="${top}" width="${hw}" height="${ih}" fill="#fff" filter="url(#grain)"/><rect x="${x0}" y="${top}" width="${hw}" height="${ih}" fill="url(#light)"/>`;
+  const cap=pw*.5;
+  for(let a=0;a<24;a++){
+    const x=colX(a),c=x+pw/2,col=a<12?a:23-a,long=col%2===0,len=ih*(long?.36:.31),tp=isTop(a),sg=tp?1:-1,yb=tp?top:bot;
+    h+=`<ellipse cx="${c}" cy="${yb+sg*cap*.95}" rx="${pw*.47}" ry="${cap*1.05}" fill="url(#cap)" stroke="rgba(120,80,30,.35)"/>`;
+    const y1=yb+sg*cap*1.6,y0=yb+sg*cap*1.08,tip=yb+sg*len;
+    h+=`<path d="M${x+pw*.05} ${y1} Q${c} ${y0} ${x+pw*.95} ${y1} Q${c+pw*.18} ${(y1+tip)/2} ${c+1.2} ${tip} L${c-1.2} ${tip} Q${c-pw*.18} ${(y1+tip)/2} ${x+pw*.05} ${y1}Z" fill="url(#pt)" filter="url(#sh2)"/>`;
+  }
+  for(const x0 of[L0,R0])h+=`<rect x="${x0}" y="${top}" width="${hw}" height="16" fill="url(#inT)"/><rect x="${x0}" y="${top}" width="14" height="${ih}" fill="url(#inL)"/><rect x="${x0}" y="${top}" width="${hw}" height="${ih}" fill="none" stroke="rgba(60,25,5,.6)" stroke-width="2"/>`;
+  for(const x0 of[L0,R0])h+=`<g opacity=".16"><circle cx="${x0+hw/2}" cy="${H/2}" r="62" fill="none" stroke="#5a3210" stroke-width="2"/><circle cx="${x0+hw/2}" cy="${H/2}" r="54" fill="none" stroke="#5a3210"/><use href="#star" x="${x0+hw/2-58}" y="${H/2-58}" width="116" height="116" fill="#5a3210"/></g>`;
+  h+=`<rect x="${bx}" y="0" width="${BAR}" height="${H}" fill="url(#barG)"/><rect x="${bx}" y="0" width="${BAR}" height="${H}" fill="#7a3414" filter="url(#grainD)" opacity=".55"/>`;
+  h+=`<line x1="${bx+BAR/2}" y1="0" x2="${bx+BAR/2}" y2="${H}" stroke="rgba(0,0,0,.5)" stroke-width="1.5"/><line x1="${bx+BAR/2+1.5}" y1="0" x2="${bx+BAR/2+1.5}" y2="${H}" stroke="rgba(255,190,140,.18)"/>`;
+  for(const y of[H*.2,H*.7]){const hh=H*.1;h+=`<g filter="url(#sh2)"><rect x="${bx+7}" y="${y}" width="${BAR-14}" height="${hh}" rx="3" fill="url(#brass)" stroke="#6e4f12"/></g><rect x="${bx+BAR/2-2}" y="${y-2}" width="4" height="${hh+4}" rx="2" fill="url(#brass)" stroke="#6e4f12" stroke-width=".8"/>`;
+    for(const dy of[.18,.5,.82])for(const dx of[13,BAR-13])h+=`<circle cx="${bx+dx}" cy="${y+hh*dy}" r="2.6" fill="url(#screw)" stroke="#5a400c" stroke-width=".6"/><line x1="${bx+dx-1.6}" y1="${y+hh*dy}" x2="${bx+dx+1.6}" y2="${y+hh*dy}" stroke="#5a400c" stroke-width=".7"/>`}
+  h+=`<rect width="${W}" height="${H}" fill="url(#vig)" pointer-events="none"/>`;
+  GB.innerHTML=h;
+}
+function coinSVG(c,tp){
+  const r=R.cr,th=r*.24,dir=tp?-1:1,T=c==='L'?'topL':'topD',S=c==='L'?'sideL':'sideD',e=c==='L'?'#4a2c12':'#0c0402';
+  return `<ellipse cx="2" cy="${dir*th+5}" rx="${r*1.05}" ry="${r*1.02}" fill="url(#cshadow)"/>`+
+  `<path d="M${-r} 0 L${-r} ${dir*th} A${r} ${r} 0 0 ${dir>0?0:1} ${r} ${dir*th} L${r} 0Z" fill="url(#${S})" stroke="${e}"/>`+
+  `<circle r="${r}" fill="url(#${T})" stroke="${e}" stroke-width="1.2"/><circle r="${r*.82}" fill="none" stroke="rgba(0,0,0,.28)" stroke-width="1.6"/><circle r="${r*.79}" fill="none" stroke="rgba(255,235,200,.18)"/>`+
+  `<g class="fc"><circle r="${r*.6}" fill="none" stroke="rgba(0,0,0,.18)"/><use href="#star" x="${-r*.56}" y="${-r*.56}" width="${r*1.12}" height="${r*1.12}" fill="url(#${c==='L'?'ebony':'silver'})"/><ellipse cx="${-r*.25}" cy="${-r*.35}" rx="${r*.45}" ry="${r*.18}" fill="rgba(255,255,255,.14)" transform="rotate(-25 ${-r*.25} ${-r*.35})"/></g>`;
+}
+const CK=[];
+function makeCheckers(){GC.innerHTML='';CK.length=0;for(let i=0;i<30;i++){const g=document.createElementNS(NS,'g');g._tp=null;CK.push(g)}}
+function place(anim){
+  const order=[],cur={};
+  G.pts.forEach((ids,a)=>{ids.forEach((id,k)=>{const p=stackPos(a,k,ids.length);cur[id]={...p,tp:isTop(a),top:k===ids.length-1};order.push(id)})});
+  for(const c of['L','D'])G.off[c].forEach(id=>{cur[id]={x:c==='L'?R.L0-R.cr:R.R0+R.hw+R.cr,y:c==='L'?R.top+R.ih*.25:R.bot-R.ih*.25,tp:c==='D',top:true,off:true};order.push(id)});
+  const moved=order.filter(id=>CK[id]._p&&(CK[id]._p.x!==cur[id].x||CK[id]._p.y!==cur[id].y)&&anim);
+  const rest=order.filter(id=>!moved.includes(id));
+  for(const id of[...rest,...moved]){
+    const g=CK[id],p=cur[id];
+    if(g._tp!==p.tp){g.innerHTML=coinSVG(colOf(id),p.tp);g._tp=p.tp}
+    g.querySelector('.fc').style.display=p.top?'':'none';
+    GC.appendChild(g);
+    const to=`translate(${p.x}px,${p.y}px)`;
+    if(moved.includes(id)){const fr=`translate(${g._p.x}px,${g._p.y}px)`;try{g.animate([{transform:fr},{transform:to}],{duration:380,easing:'ease-in-out'})}catch(e){}}
+    g.style.transform=to;g.style.opacity=p.off?0:1;
+    if(p.off&&moved.includes(id)){try{g.animate([{opacity:1},{opacity:1,offset:.6},{opacity:0}],{duration:520})}catch(e){}}
+    g._p={x:p.x,y:p.y};
+  }
+  // счёт пунктов
+  const bx=R.bx+R.BAR/2;
+  GT.innerHTML=`<text x="${bx}" y="${R.top+38}" fill="#fff" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-weight="700" font-size="22" style="paint-order:stroke" stroke="rgba(0,0,0,.45)" stroke-width="3">${pip('D')}</text>
+  <text x="${bx}" y="${R.bot-18}" fill="#fff" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-weight="700" font-size="22" style="paint-order:stroke" stroke="rgba(0,0,0,.45)" stroke-width="3">${pip('L')}</text>`;
+}
+/* ---------- кубики ---------- */
+const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
+const DS=64;
+function dieSVG(n,dim){let h=`<g opacity="${dim?.35:1}"><rect x="${-DS/2}" y="${-DS/2}" width="${DS}" height="${DS}" rx="13" fill="url(#diceG)" stroke="#b9b9b9" filter="url(#sh)"/><rect x="${-DS/2+3}" y="${-DS/2+3}" width="${DS-6}" height="${DS-6}" rx="11" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2"/>`;
+  for(const[a,b]of PIPS[n])h+=`<circle cx="${(a-.5)*DS}" cy="${(b-.5)*DS}" r="6.8" fill="url(#pip)"/>`;return h+'</g>'}
+function dicePos(c){const x0=c==='L'?R.L0:R.R0,cx=x0+R.hw/2,cy=R.H/2;return[{x:cx-42,y:cy+4,r:4},{x:cx+42,y:cy-6,r:-14}]}
+function drawDice(){
+  if(!G.dice.length){GD.innerHTML='';return}
+  const ps=dicePos(G.turn),dbl=G.dice[0]===G.dice[1];let h='';
+  G.dice.forEach((n,i)=>{const dim=!dbl&&G.rolled&&!G.left.includes(n);
+    h+=`<g class="die" style="transform:translate(${ps[i].x}px,${ps[i].y}px) rotate(${ps[i].r}deg)">${dieSVG(n,dim)}</g>`});
+  if(dbl&&G.rolled){const x=(ps[0].x+ps[1].x)/2,y=R.H/2+52;for(let i=0;i<4;i++)h+=`<circle cx="${x-27+i*18}" cy="${y}" r="6" fill="${i<G.left.length?'#fff':'rgba(255,255,255,.25)'}" stroke="rgba(0,0,0,.35)"/>`}
+  GD.innerHTML=h;
+}
+function rollAnim(c,done){
+  const ps=dicePos(c),fromX=c==='L'?R.L0-60:R.R0+R.hw+60;
+  GD.innerHTML='';const els=[0,1].map(i=>{const g=document.createElementNS(NS,'g');g.innerHTML=dieSVG(1+Math.random()*6|0);GD.appendChild(g);return g});
+  const iv=setInterval(()=>els.forEach(g=>g.innerHTML=dieSVG(1+Math.random()*6|0)),70);
+  els.forEach((g,i)=>{const p=ps[i],sy=R.H/2+(i?-70:70);
+    try{g.animate([{transform:`translate(${fromX}px,${sy}px) rotate(${c==='L'?-300:300}deg)`},{transform:`translate(${(fromX+p.x)/2+(i?20:-10)}px,${(sy+p.y)/2-30}px) rotate(${c==='L'?-90:90}deg)`,offset:.55},{transform:`translate(${p.x}px,${p.y}px) rotate(${p.r}deg)`}],{duration:700,easing:'cubic-bezier(.2,.7,.3,1)',fill:'forwards'})}catch(e){}});
+  setTimeout(()=>{clearInterval(iv);done()},720);
+}
+/* ---------- подсветка ---------- */
+function drawHL(){
+  let h='';
+  if(sel!==null){
+    const ids=G.pts[sel],p=stackPos(sel,ids.length-1,ids.length);
+    h+=`<circle cx="${p.x}" cy="${p.y}" r="${R.cr+4}" fill="none" stroke="#ffd54a" stroke-width="4"/>`;
+    for(const st of legal.filter(s=>s.a===sel)){
+      if(st.to==='off'){const L=G.turn==='L';h+=`<rect x="4" y="${L?R.top:R.H/2}" width="${R.F+R.mx+4}" height="${R.ih/2}" rx="8" fill="rgba(255,213,74,.35)" stroke="#ffd54a" stroke-width="3"/>`;if(!L)h=h.replace(`x="4" y="${R.H/2}"`,`x="${R.R0+R.hw-R.mx}" y="${R.H/2}"`);continue}
+      const x=colX(st.to),tp=isTop(st.to);h+=`<rect x="${x+2}" y="${tp?R.top+2:R.H/2+6}" width="${R.pw-4}" height="${R.ih/2-8}" rx="10" fill="rgba(255,213,74,.22)" stroke="#ffd54a" stroke-width="3"/>`;
+    }
+  }else if(G.rolled&&!busy&&human(G.turn)){
+    for(const a of uniq(legal.map(s=>s.a))){const ids=G.pts[a],p=stackPos(a,ids.length-1,ids.length);h+=`<circle cx="${p.x}" cy="${p.y}" r="${R.cr+3}" fill="none" stroke="rgba(255,213,74,.85)" stroke-width="3"/>`}
+  }
+  GH.innerHTML=h;
+}
+function render(anim){place(anim);drawDice();drawHL();$('mUndo').disabled=!undo.length}
+function toast(t,ms){const e=$('toast');e.textContent=t;e.style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.opacity=0,ms||1400)}
+
+/* ---------- ход ---------- */
+function recompute(){legal=G.left.length?legalSteps(cntOf(),G.turn,G.left,G.hu,headLimit(G.turn)):[]}
+function roll(){
+  if(busy||G.over||G.rolled)return;busy=true;sel=null;GH.innerHTML='';
+  const d=[1+Math.random()*6|0,1+Math.random()*6|0];
+  rollAnim(G.turn,()=>{G.dice=d;G.left=d[0]===d[1]?[d[0],d[0],d[0],d[0]]:d.slice();G.rolled=true;G.hu=0;undo=[];busy=false;recompute();save();render(false);
+    if(!legal.length){toast('Ходов нет');setTimeout(endTurn,1300);return}
+    if(!human(G.turn))aiPlay();});
+}
+function doStep(st){
+  undo.push(JSON.stringify(G));
+  const id=G.pts[st.a].pop();
+  if(st.to==='off')G.off[G.turn].push(id);else G.pts[st.to].push(id);
+  if(tOf(G.turn,st.a)===0)G.hu++;
+  G.left=removeOne(G.left,st.v);sel=null;recompute();save();render(true);
+  if(G.off[G.turn].length===15){win(G.turn);return}
+  if(!legal.length){busy=true;setTimeout(()=>{busy=false;endTurn()},650)}
+}
+function endTurn(){
+  if(G.over)return;
+  G.first[G.turn]=false;G.turn=other(G.turn);G.rolled=false;G.left=[];G.hu=0;undo=[];sel=null;legal=[];save();render(false);
+  if(!human(G.turn))setTimeout(roll,650);
+  else if(G.mode==='pvp')toast(G.turn==='L'?'Ход светлых':'Ход тёмных',1000);
+}
+function aiPlay(){
+  busy=true;
+  setTimeout(()=>{
+    const seq=bestSequence(cntOf(),G.off.D.length,'D',G.left,G.hu,headLimit('D'));
+    let i=0;const next=()=>{if(G.over)return;if(i>=seq.length){busy=false;if(!G.over)setTimeout(endTurn,300);return}
+      const st=seq[i++];doStepAI(st);setTimeout(next,560)};next();
+  },450);
+}
+function doStepAI(st){const id=G.pts[st.a].pop();if(st.to==='off')G.off.D.push(id);else G.pts[st.to].push(id);if(tOf('D',st.a)===0)G.hu++;G.left=removeOne(G.left,st.v);save();render(true);if(G.off.D.length===15)win('D')}
+function win(c){
+  G.over=true;busy=false;save();render(false);
+  const loser=other(c),mars=G.off[loser].length===0;
+  $('wT').textContent=G.mode==='ai'?(c==='L'?'Победа!':'Компьютер выиграл'):(c==='L'?'Победили светлые':'Победили тёмные');
+  $('wP').textContent=mars?'Марс — соперник не успел выбросить ни одной шашки':'Все шашки выброшены';
+  if(G.mode==='pvp'||c==='L')fireworks();setTimeout(()=>$('ow').classList.add('on'),1400);
+}
+function newGame(){fireworks.stop=true;const m=G?G.mode:'ai';G=newState(m);undo=[];sel=null;legal=[];busy=false;document.querySelectorAll('.ov').forEach(o=>o.classList.remove('on'));save();render(false);
+  toast(G.mode==='ai'?(G.turn==='L'?'Вы ходите первым':'Первым ходит компьютер'):(G.turn==='L'?'Первыми ходят светлые':'Первыми ходят тёмные'),1500);
+  if(!human(G.turn))setTimeout(roll,1600)}
+
+/* ---------- нажатия ---------- */
+function svgPt(e){ // без getScreenCTM: Safari не всегда учитывает CSS-поворот
+  let lx=e.clientX,ly=e.clientY;
+  if(innerHeight>innerWidth){lx=e.clientY;ly=innerWidth-e.clientX}
+  return{x:lx*R.W/APP.clientWidth,y:ly*R.H/APP.clientHeight};
+}
+function hitPoint(x,y){
+  for(let a=0;a<24;a++){const cx=colX(a);if(x>=cx&&x<cx+R.pw&&(isTop(a)?y<R.H/2:y>=R.H/2))return a}
+  return null;
+}
+let downAt=null;
+SV.addEventListener('pointerdown',e=>{downAt={x:e.clientX,y:e.clientY}});
+SV.addEventListener('pointerup',e=>{
+  if(!downAt)return;const sw=Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>30;downAt=null;
+  const {x,y}=svgPt(e);
+  if(x>=R.bx&&x<=R.bx+R.BAR){openMenu();return}
+  if(G.over||busy||!human(G.turn))return;
+  if(!G.rolled){roll();return}
+  if(sw)return;
+  // выброс
+  if(sel!==null){const off=legal.find(s=>s.a===sel&&s.to==='off');
+    if(off){const L=G.turn==='L';if(L?(x<R.L0+R.mx&&y<R.H/2):(x>R.R0+R.hw-R.mx&&y>R.H/2)){doStep(off);return}}}
+  const a=hitPoint(x,y);if(a===null){sel=null;drawHL();return}
+  if(sel!==null){const st=legal.find(s=>s.a===sel&&s.to===a);if(st){doStep(st);return}}
+  if(legal.some(s=>s.a===a)){
+    // если ход одним вариантом (например, только выброс) — всё равно выделяем, второй тап делает ход
+    sel=sel===a?null:a;
+  }else sel=null;
+  drawHL();
+});
+
+/* ---------- меню ---------- */
+function openMenu(){$('mMode').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===G.mode));$('mUndo').disabled=!undo.length||busy;$('om').classList.add('on')}
+$('mNew').onclick=()=>{$('om').classList.remove('on');if(!G.over&&(G.rolled||G.off.L.length||G.pts[0].length<15||G.pts[12].length<15))$('oc').classList.add('on');else newGame()};
+$('mK').onclick=()=>{location.href='../'};
+$('cNo').onclick=()=>$('oc').classList.remove('on');$('cYes').onclick=newGame;$('wNew').onclick=newGame;
+$('mUndo').onclick=()=>{if(!undo.length||busy)return;G=JSON.parse(undo.pop());sel=null;recompute();save();render(true);$('mUndo').disabled=!undo.length};
+$('mMode').onclick=e=>{const v=e.target.dataset.v;if(!v||v===G.mode)return;G.mode=v;save();openMenu();if(!human(G.turn)&&!busy){$('om').classList.remove('on');if(!G.rolled)roll();else aiPlay()}};
+document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('on')}));
+
+/* ---------- фейерверк ---------- */
+function fireworks(){
+  const cv=$('fw'),cx=cv.getContext('2d'),dpr=devicePixelRatio||1;let W,H,ps=[],t0=performance.now(),last=0;
+  W=APP.clientWidth;H=APP.clientHeight;cv.width=W*dpr;cv.height=H*dpr;cx.setTransform(dpr,0,0,dpr,0,0);
+  cv.style.display='block';fireworks.stop=false;
+  const COL=['#ffd54a','#ff5a5f','#5ad1ff','#7dff7a','#ff8cf0','#ffffff','#ffa53d'];
+  const boom=()=>{const x=W*(.15+Math.random()*.7),y=H*(.12+Math.random()*.45),c=COL[Math.random()*COL.length|0],n=60+Math.random()*30|0;
+    for(let i=0;i<n;i++){const a=Math.PI*2*i/n,v=1.6+Math.random()*2.6;ps.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1,c})}};
+  const fr=now=>{if(fireworks.stop){cv.style.display='none';return}
+    const el=now-t0;if(el<4200&&now-last>380){boom();if(Math.random()<.5)boom();last=now}
+    cx.clearRect(0,0,W,H);
+    for(const p of ps){p.x+=p.vx;p.y+=p.vy;p.vy+=.045;p.vx*=.985;p.vy*=.985;p.l-=.012;if(p.l>0){cx.globalAlpha=p.l;cx.fillStyle=p.c;cx.beginPath();cx.arc(p.x,p.y,2.8,0,7);cx.fill()}}
+    cx.globalAlpha=1;ps=ps.filter(p=>p.l>0);if(el<4200||ps.length)requestAnimationFrame(fr);else cv.style.display='none'};
+  requestAnimationFrame(fr);
+}
+
+/* ---------- поворот и размеры ---------- */
+function fit(){
+  const w=innerWidth,h=innerHeight;
+  if(h>w){APP.style.width=h+'px';APP.style.height=w+'px';APP.style.transform=`translate(${w}px,0) rotate(90deg)`}
+  else{APP.style.width=w+'px';APP.style.height=h+'px';APP.style.transform='none'}
+  geo();drawBoard();CK.forEach(g=>{g._tp=null;g._p=null});render(false);
+}
+addEventListener('resize',()=>{clearTimeout(fit.t);fit.t=setTimeout(fit,60)});
+makeCheckers();
+if(!load())G=newState('ai');
+fit();
+if(!G.over){
+  if(G.rolled){recompute();render(false);if(!human(G.turn))aiPlay()}
+  else if(!human(G.turn))setTimeout(roll,700);
+  else if(G.pts[0].length===15&&G.pts[12].length===15&&!G.off.L.length)toast(G.mode==='ai'?(G.turn==='L'?'Вы ходите первым · нажмите на доску':'Первым ходит компьютер'):'Нажмите на доску, чтобы бросить',1800);
+}
+}
+</script>
+<script>
+const VER='16';
+function checkVer(){fetch('../version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
+  v=v&&v.trim();if(!v||v===VER)return;
+  try{if(sessionStorage.getItem('nardy_upd')===v)return;sessionStorage.setItem('nardy_upd',v)}catch(_){}
+  (window.caches?caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))):Promise.resolve()).then(()=>location.replace(location.pathname+'?v='+v))}).catch(()=>{})}
+if(location.search)try{history.replaceState(null,'',location.pathname)}catch(_){}
+setInterval(checkVer,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkVer()});setTimeout(checkVer,3000);
+if("serviceWorker" in navigator){navigator.serviceWorker.register("../sw.js").catch(()=>{});navigator.serviceWorker.addEventListener("message",e=>{if(e.data==="updated")location.reload()})}</script>
+</body></html>

@@ -1,9 +1,9 @@
-// Офлайн-кэш «Косынки»: страница открывается сразу из памяти телефона,
-// новая версия скачивается в фоне, и открытая игра сама перезагружается (партия сохраняется).
-const C = 'kosynka-v3';
+// Офлайн-кэш «Косынки» и «Нард» (nardy/): страницы открываются из памяти телефона,
+// новые версии скачиваются в фоне; открытая игра сама перезагружается (партия сохраняется).
+const C = 'kosynka-v4';
 const SCOPE = self.registration.scope;
-const PAGE = SCOPE;
-const CORE = [SCOPE, SCOPE + 'index.html', SCOPE + 'apple-touch-icon.png'];
+const PAGES = [SCOPE, SCOPE + 'nardy/'];
+const CORE = [...PAGES, SCOPE + 'apple-touch-icon.png'];
 const FONTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {
@@ -15,16 +15,25 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-async function refreshPage() {
+// адрес страницы без ?… и без index.html
+function pageKey(u) {
+  const url = new URL(u);
+  let p = url.origin + url.pathname.replace(/index\.html$/, '');
+  if (!p.endsWith('/')) p += '/';
+  return p;
+}
+
+async function refresh(key) {
   try {
     const c = await caches.open(C);
-    const old = await c.match(PAGE);
-    const r = await fetch(PAGE + '?t=' + Date.now(), { cache: 'no-store' });
+    const old = await c.match(key);
+    const r = await fetch(key + '?t=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) return;
     const text = await r.clone().text();
     const changed = old ? (await old.text()) !== text : false;
-    await c.put(PAGE, r.clone()); await c.put(SCOPE + 'index.html', r);
-    if (changed) (await self.clients.matchAll({ type: 'window' })).forEach(w => w.postMessage('updated'));
+    await c.put(key, r);
+    if (changed) (await self.clients.matchAll({ type: 'window' }))
+      .filter(w => pageKey(w.url) === key).forEach(w => w.postMessage('updated'));
   } catch (e) {}
 }
 
@@ -33,18 +42,19 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.pathname.endsWith('version.txt')) return;
-  if (req.mode === 'navigate' && url.searchParams.has('v')) {
-    e.respondWith(fetch(SCOPE + '?t=' + Date.now(), { cache: 'no-store' }).then(async r => {
-      if (r.ok) { const c = await caches.open(C); await c.put(PAGE, r.clone()); await c.put(SCOPE + 'index.html', r.clone()); }
-      return r;
-    }).catch(() => caches.match(PAGE)));
-    return;
-  }
   if (req.mode === 'navigate') {
+    const key = pageKey(req.url);
+    if (url.searchParams.has('v')) {
+      e.respondWith(fetch(key + '?t=' + Date.now(), { cache: 'no-store' }).then(async r => {
+        if (r.ok) (await caches.open(C)).put(key, r.clone());
+        return r;
+      }).catch(() => caches.match(key)));
+      return;
+    }
     e.respondWith(caches.open(C).then(async c => {
-      const hit = await c.match(PAGE) || await c.match(SCOPE + 'index.html');
-      if (hit) { e.waitUntil(refreshPage()); return hit; }
-      const r = await fetch(req); if (r.ok) c.put(PAGE, r.clone()); return r;
+      const hit = await c.match(key);
+      if (hit) { e.waitUntil(refresh(key)); return hit; }
+      const r = await fetch(key); if (r.ok) c.put(key, r.clone()); return r;
     }));
     return;
   }

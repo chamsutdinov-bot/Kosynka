@@ -94,6 +94,7 @@ header{background:linear-gradient(rgba(255,255,255,.10),rgba(255,255,255,0))}
   <button id="un" disabled><svg viewBox="0 0 24 24" fill="none" stroke="#e8b04a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Шаг назад</button>
 </nav>
 <div class="ov" id="ow"><div class="pop"><h2>Победа!</h2><p id="wt"></p><button class="go" id="ng2">Играть ещё</button></div></div>
+<div class="ov" id="og"><div class="pop"><h2>Во что играем?</h2><button class="go" id="gK">Косынка</button><button class="go" id="gN">Нарды</button></div></div>
 <div class="ov" id="oc"><div class="pop"><h2>Начать новую игру?</h2><p>Текущая партия будет потеряна</p><div style="display:flex;gap:8px"><button class="go" id="cn" style="flex:1">Отмена</button><button class="go" id="cy" style="flex:1">Новая</button></div></div></div>
 <div class="ov" id="os"><div class="pop"><h2>Настройки</h2>
   <div class="row">Рубашка<div class="seg" id="sb"><button data-v="red">красная</button><button data-v="blue">синяя</button></div></div>
@@ -320,7 +321,9 @@ function segs(){
 }
 $('sb').onclick=e=>{const v=e.target.dataset.v;if(!v)return;O.back=v;document.body.classList.toggle('blue',v=='blue');saveO();segs()};
 $('bs').onclick=()=>{segs();$('os').classList.add('on')};
-$('bp').onclick=()=>{if(S.moves>0&&!S.won)$('oc').classList.add('on');else newGame()};
+$('bp').onclick=()=>$('og').classList.add('on');
+$('gK').onclick=()=>{$('og').classList.remove('on');if(S.moves>0&&!S.won)$('oc').classList.add('on');else newGame()};
+$('gN').onclick=()=>{location.href='nardy/'};
 $('cn').onclick=()=>$('oc').classList.remove('on');$('cy').onclick=newGame;$('ng2').onclick=newGame;UN.onclick=undo;
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('on')}));
 
@@ -336,7 +339,7 @@ if(load()){render();if(!S.won)check()}else newGame();
 }
 </script>
 <script>
-const VER='15';
+const VER='16';
 function checkVer(){fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('kos_upd')===v)return;sessionStorage.setItem('kos_upd',v)}catch(_){}
