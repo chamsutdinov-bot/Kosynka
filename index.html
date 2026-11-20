@@ -209,15 +209,15 @@ function lay(){
   // закрытый Duo: справа сверху висит плашка времени/батареи — верхний ряд ужимаем влево, чтобы колода не попадала под неё
   const sm=Math.min(screen.width,screen.height),sM=Math.max(screen.width,screen.height);
   const pill=!land&&sM/sm<1.75&&sm<520&&matchMedia('(pointer:coarse)').matches;
-  let k=1;if(pill){k=Math.min(1,(W-84-ox-6*g)/6.84/cw);ty=Math.max(ch*k+g*1.6,162-B.getBoundingClientRect().top)}
+  let k=1;if(pill){k=Math.min(1,(W-84-ox-5*g)/6/cw);ty=Math.max(ch*k+g*1.6,162-B.getBoundingClientRect().top)}
   L={W,H,g,cw,ch,ty,land,k,tw:cw*k,th:ch*k};
   B.style.setProperty('--cw',cw+'px');B.style.setProperty('--ch',ch+'px');
-  const col={f0:0,f1:1,f2:2,f3:3,wa:4,st:6};
+  const col={f0:0,f1:1,f2:2,f3:3,wa:5,st:6};
   for(const p of P){
     let x,y;
     if(p[0]=='t'){x=x0+(+p[1])*(cw+g);y=ty}
     else if(land){const f=p[0]=='f';x=f?ox:x0+7*(cw+g)+g;y=(f?+p[1]:p=='wa'?1:0)*(ch+g)}
-    else if(k<1){const tw=L.tw;x=p=='st'?ox+4*(tw+g)+1.84*tw+g:ox+col[p]*(tw+g);y=0}
+    else if(k<1){const tw=L.tw;x=ox+(p=='st'?5:p=='wa'?4:col[p])*(tw+g);y=0}
     else{x=ox+col[p]*(cw+g);y=0}
     const top=p[0]!='t'&&!land,sw=top?L.tw:cw,sh=top?L.th:ch;
     L[p]={x,y};Object.assign(slots[p].style,{left:x+'px',top:y+'px',width:sw+'px',height:sh+'px'});
@@ -299,7 +299,7 @@ if(load()){render();if(!S.won)check()}else newGame();
 }
 </script>
 <script>
-const VER='7';
+const VER='8';
 function checkVer(){fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('kos_upd')===v)return;sessionStorage.setItem('kos_upd',v)}catch(_){}
