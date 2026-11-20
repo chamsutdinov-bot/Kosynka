@@ -241,9 +241,10 @@ function place(anim){
     g.querySelector('.fc').style.display=p.top?'':'none';
     GC.appendChild(g);
     const to=`translate(${p.x}px,${p.y}px)`;
-    if(moved.includes(id)){const fr=`translate(${g._p.x}px,${g._p.y}px)`;try{g.animate([{transform:fr},{transform:to}],{duration:380,easing:'ease-in-out'})}catch(e){}}
+    if(moved.includes(id)){const a=g._p,b=p,mxp=(a.x+b.x)/2,myp=(a.y+b.y)/2-Math.min(60,Math.hypot(b.x-a.x,b.y-a.y)*.18);
+      try{g.animate([{transform:`translate(${a.x}px,${a.y}px) scale(1)`},{transform:`translate(${(a.x+mxp)/2}px,${(a.y+myp)/2-6}px) scale(1.07)`,offset:.3},{transform:`translate(${mxp}px,${myp}px) scale(1.1)`,offset:.5},{transform:`translate(${(mxp+b.x)/2}px,${(myp+b.y)/2-4}px) scale(1.06)`,offset:.72},{transform:`translate(${b.x}px,${b.y}px) scale(1)`}],{duration:620,easing:'cubic-bezier(.45,.05,.35,1)'})}catch(e){}}
     g.style.transform=to;g.style.opacity=p.off?0:1;
-    if(p.off&&moved.includes(id)){try{g.animate([{opacity:1},{opacity:1,offset:.6},{opacity:0}],{duration:520})}catch(e){}}
+    if(p.off&&moved.includes(id)){try{g.animate([{opacity:1},{opacity:1,offset:.6},{opacity:0}],{duration:700})}catch(e){}}
     g._p={x:p.x,y:p.y};
   }
   // счёт пунктов
@@ -265,13 +266,29 @@ function drawDice(){
   if(dbl&&G.rolled){const x=(ps[0].x+ps[1].x)/2,y=R.H/2+52;for(let i=0;i<4;i++)h+=`<circle cx="${x-27+i*18}" cy="${y}" r="6" fill="${i<G.left.length?'#fff':'rgba(255,255,255,.25)'}" stroke="rgba(0,0,0,.35)"/>`}
   GD.innerHTML=h;
 }
-function rollAnim(c,done){
-  const ps=dicePos(c),fromX=c==='L'?R.L0-60:R.R0+R.hw+60;
-  GD.innerHTML='';const els=[0,1].map(i=>{const g=document.createElementNS(NS,'g');g.innerHTML=dieSVG(1+Math.random()*6|0);GD.appendChild(g);return g});
-  const iv=setInterval(()=>els.forEach(g=>g.innerHTML=dieSVG(1+Math.random()*6|0)),70);
-  els.forEach((g,i)=>{const p=ps[i],sy=R.H/2+(i?-70:70);
-    try{g.animate([{transform:`translate(${fromX}px,${sy}px) rotate(${c==='L'?-300:300}deg)`},{transform:`translate(${(fromX+p.x)/2+(i?20:-10)}px,${(sy+p.y)/2-30}px) rotate(${c==='L'?-90:90}deg)`,offset:.55},{transform:`translate(${p.x}px,${p.y}px) rotate(${p.r}deg)`}],{duration:700,easing:'cubic-bezier(.2,.7,.3,1)',fill:'forwards'})}catch(e){}});
-  setTimeout(()=>{clearInterval(iv);done()},720);
+function rollAnim(c,done,res){
+  const ps=dicePos(c),dir=c==='L'?1:-1,fromX=c==='L'?R.L0-50:R.R0+R.hw+50,DUR=1250;
+  GD.innerHTML='';
+  const ds=[0,1].map(i=>{const g=document.createElementNS(NS,'g');GD.appendChild(g);
+    const sy=R.H/2+(i?-80:80),p=ps[i],spin=(2.6+Math.random()*.8+i*.4)*360*dir;
+    return{g,sx:fromX,sy,ex:p.x,ey:p.y,er:p.r,spin,face:1+Math.random()*6|0,last:-1,res:res[i]}});
+  const ease=t=>1-Math.pow(1-t,3);
+  const t0=performance.now();
+  const fr=now=>{
+    const t=Math.min(1,(now-t0)/DUR),e=ease(t);
+    for(const d of ds){
+      const x=d.sx+(d.ex-d.sx)*e;
+      // два затухающих подскока
+      const hop=Math.abs(Math.sin(e*Math.PI*2.2))*(1-e)*46;
+      const y=d.sy+(d.ey-d.sy)*e-hop;
+      const rot=d.er+d.spin*(1-e);
+      const sc=1+.12*(1-e)*Math.abs(Math.sin(e*Math.PI*2.2));
+      const q=Math.floor(Math.abs(d.spin*(1-e))/90);
+      if(q!==d.last){d.last=q;d.face=t>.82?d.res:(d.face%6)+1+(Math.random()*4|0);if(d.face>6)d.face-=6;d.g.innerHTML=dieSVG(t>.82?d.res:d.face)}
+      d.g.setAttribute('transform',`translate(${x} ${y}) rotate(${rot}) scale(${sc})`);
+    }
+    if(t<1)requestAnimationFrame(fr);else{ds.forEach(d=>d.g.innerHTML=dieSVG(d.res));setTimeout(done,120)}
+  };requestAnimationFrame(fr);
 }
 /* ---------- подсветка ---------- */
 function drawHL(){
@@ -298,7 +315,7 @@ function roll(){
   const d=[1+Math.random()*6|0,1+Math.random()*6|0];
   rollAnim(G.turn,()=>{G.dice=d;G.left=d[0]===d[1]?[d[0],d[0],d[0],d[0]]:d.slice();G.rolled=true;G.hu=0;undo=[];busy=false;recompute();save();render(false);
     if(!legal.length){toast('Ходов нет');setTimeout(endTurn,1300);return}
-    if(!human(G.turn))aiPlay();});
+    if(!human(G.turn))aiPlay();},d);
 }
 function doStep(st){
   undo.push(JSON.stringify(G));
@@ -307,7 +324,7 @@ function doStep(st){
   if(tOf(G.turn,st.a)===0)G.hu++;
   G.left=removeOne(G.left,st.v);sel=null;recompute();save();render(true);
   if(G.off[G.turn].length===15){win(G.turn);return}
-  if(!legal.length){busy=true;setTimeout(()=>{busy=false;endTurn()},650)}
+  if(!legal.length){busy=true;setTimeout(()=>{busy=false;endTurn()},800)}
 }
 function endTurn(){
   if(G.over)return;
@@ -320,7 +337,7 @@ function aiPlay(){
   setTimeout(()=>{
     const seq=bestSequence(cntOf(),G.off.D.length,'D',G.left,G.hu,headLimit('D'));
     let i=0;const next=()=>{if(G.over)return;if(i>=seq.length){busy=false;if(!G.over)setTimeout(endTurn,300);return}
-      const st=seq[i++];doStepAI(st);setTimeout(next,560)};next();
+      const st=seq[i++];doStepAI(st);setTimeout(next,760)};next();
   },450);
 }
 function doStepAI(st){const id=G.pts[st.a].pop();if(st.to==='off')G.off.D.push(id);else G.pts[st.to].push(id);if(tOf('D',st.a)===0)G.hu++;G.left=removeOne(G.left,st.v);save();render(true);if(G.off.D.length===15)win('D')}
@@ -410,7 +427,7 @@ if(!G.over){
 }
 </script>
 <script>
-const VER='16';
+const VER='17';
 function checkVer(){fetch('../version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('nardy_upd')===v)return;sessionStorage.setItem('nardy_upd',v)}catch(_){}
