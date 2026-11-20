@@ -339,7 +339,7 @@ if(load()){render();if(!S.won)check()}else newGame();
 }
 </script>
 <script>
-const VER='20';
+const VER='21';
 function checkVer(){fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('kos_upd')===v)return;sessionStorage.setItem('kos_upd',v)}catch(_){}
