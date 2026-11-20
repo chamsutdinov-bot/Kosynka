@@ -426,10 +426,34 @@ function hitPoint(x,y){
   for(let a=0;a<24;a++){const cx=colX(a);if(x>=cx&&x<cx+R.pw&&(isTop(a)?y<R.H/2:y>=R.H/2))return a}
   return null;
 }
-let downAt=null;
-SV.addEventListener('pointerdown',e=>{downAt={x:e.clientX,y:e.clientY}});
+let downAt=null,DR=null;
+function offZone(x,y){const L=G.turn==='L';return L?(x<R.L0+R.pw*.75&&y<R.H/2):(x>R.R0+R.hw-R.pw*.75&&y>R.H/2)}
+SV.addEventListener('pointerdown',e=>{
+  downAt={x:e.clientX,y:e.clientY};DR=null;
+  if(G.over||busy||!human(G.turn)||!G.rolled)return;
+  const {x,y}=svgPt(e),a=hitPoint(x,y);
+  if(a!==null&&legal.some(s=>s.a===a)){const id=G.pts[a][G.pts[a].length-1],p=CK[id]._p;DR={a,id,dx:p.x-x,dy:p.y-y,on:false};try{SV.setPointerCapture(e.pointerId)}catch(_){}}
+});
+SV.addEventListener('pointermove',e=>{
+  if(!DR)return;
+  if(!DR.on){if(Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)<8)return;DR.on=true;sel=DR.a;drawHL();GC.appendChild(CK[DR.id]);CK[DR.id].querySelector('.fc').style.display=''}
+  const {x,y}=svgPt(e),g=CK[DR.id];DR.x=x+DR.dx;DR.y=y+DR.dy;
+  g.style.transform=`translate(${DR.x}px,${DR.y}px) scale(1.12)`;
+});
+SV.addEventListener('pointercancel',()=>{if(DR&&DR.on){DR=null;sel=null;render(false)}DR=null;downAt=null});
 SV.addEventListener('pointerup',e=>{
-  if(!downAt)return;const sw=Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>30;downAt=null;
+  if(!downAt)return;
+  if(DR&&DR.on){ // перетаскивание шашки пальцем
+    const d=DR;DR=null;downAt=null;const {x,y}=svgPt(e),g=CK[d.id];
+    g._p={x:d.x,y:d.y}; // анимация пойдёт от места, где отпустили
+    let st=null;
+    if(offZone(x,y))st=legal.find(s=>s.a===d.a&&s.to==='off');
+    if(!st){const t=hitPoint(x,y);if(t!==null)st=legal.find(s=>s.a===d.a&&s.to===t)}
+    if(st){doStep(st)}else{sel=null;render(true)}
+    return;
+  }
+  DR=null;
+  const sw=Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>30;downAt=null;
   const {x,y}=svgPt(e);
   if(x>=R.bx&&x<=R.bx+R.BAR){openMenu();return}
   if(G.over||busy||!human(G.turn))return;
@@ -491,7 +515,7 @@ if(!G.over){
 }
 </script>
 <script>
-const VER='22';
+const VER='23';
 function checkVer(){fetch('../version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('nardy_upd')===v)return;sessionStorage.setItem('nardy_upd',v)}catch(_){}
