@@ -32,12 +32,22 @@ border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,
 .seg{display:flex;background:rgba(255,255,255,.18);border-radius:9px;padding:2px}
 .seg button{border:0;background:none;font:600 13px -apple-system,system-ui,sans-serif;padding:7px 10px;border-radius:7px;color:#fff;cursor:pointer}
 .seg button.on{background:rgba(255,255,255,.5);color:#2a1206}
+#d3{position:absolute;inset:0;pointer-events:none;perspective:1100px;perspective-origin:50% 40%;z-index:5}
+.dz{position:absolute;left:0;top:0;transform-style:preserve-3d;will-change:transform}
+.dsh{position:absolute;left:0;top:0;border-radius:50%;background:radial-gradient(closest-side,rgba(40,16,0,.55),rgba(40,16,0,0));will-change:transform,opacity}
+.cube{position:absolute;inset:0;transform-style:preserve-3d}
+.cube>div{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.cube .fa{border-radius:18%;background:radial-gradient(120% 120% at 30% 25%,#fff 0%,#f6f6f4 45%,#dcdcd8 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),inset -3px -4px 8px rgba(0,0,0,.12),inset 3px 3px 6px rgba(255,255,255,.9)}
+.cube .co{background:#e4e4e0;backface-visibility:visible!important}
+.cube .fa svg{width:100%;height:100%;display:block}
+.dz.dim{opacity:.38;transition:opacity .3s}
 #toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:10px 18px;border-radius:14px;font-weight:600;font-size:15px;z-index:15;
 background:rgba(30,12,2,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.3);opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #fw{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:30;display:none}
 </style></head><body>
 <div id="app">
   <svg id="b" xmlns="http://www.w3.org/2000/svg"><g id="board"></g><g id="hl"></g><g id="cks"></g><g id="dice"></g><g id="txt"></g></svg>
+  <div id="d3"></div>
   <div id="toast"></div>
   <div class="ov" id="om"><div class="pop"><h2>Нарды</h2>
     <button class="go" id="mNew">Новая игра</button>
@@ -258,36 +268,64 @@ const DS=64;
 function dieSVG(n,dim){let h=`<g opacity="${dim?.35:1}"><rect x="${-DS/2}" y="${-DS/2}" width="${DS}" height="${DS}" rx="13" fill="url(#diceG)" stroke="#b9b9b9" filter="url(#sh)"/><rect x="${-DS/2+3}" y="${-DS/2+3}" width="${DS-6}" height="${DS-6}" rx="11" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2"/>`;
   for(const[a,b]of PIPS[n])h+=`<circle cx="${(a-.5)*DS}" cy="${(b-.5)*DS}" r="6.8" fill="url(#pip)"/>`;return h+'</g>'}
 function dicePos(c){const x0=c==='L'?R.L0:R.R0,cx=x0+R.hw/2,cy=R.H/2;return[{x:cx-42,y:cy+4,r:4},{x:cx+42,y:cy-6,r:-14}]}
+/* ---- 3D-кубики (CSS 3D, работает без интернета) ---- */
+const D3=$('d3');
+const FACEROT={1:[0,0],6:[0,180],3:[0,-90],4:[0,90],2:[-90,0],5:[90,0]};
+function faceSVG(n){let h='<svg viewBox="0 0 100 100">';for(const[a,b]of PIPS[n])h+=`<circle cx="${a*100}" cy="${b*100}" r="9.5" fill="#111"/><circle cx="${a*100-2}" cy="${b*100-2.5}" r="3" fill="rgba(255,255,255,.18)"/>`;return h+'</svg>'}
+function makeCube(){
+  const wrap=document.createElement('div');wrap.className='dz';
+  const sh=document.createElement('div');sh.className='dsh';
+  const cube=document.createElement('div');cube.className='cube';
+  const sz=()=>wrap._s/2;
+  const faces=[[1,'rotateY(0deg)'],[6,'rotateY(180deg)'],[3,'rotateY(90deg)'],[4,'rotateY(-90deg)'],[2,'rotateX(90deg)'],[5,'rotateX(-90deg)']];
+  // серединки, чтобы в углах не было дырок
+  for(const t of['rotateY(0deg)','rotateY(90deg)','rotateX(90deg)']){const c=document.createElement('div');c.className='co';c.dataset.t=t;cube.appendChild(c)}
+  for(const[n,t]of faces){const f=document.createElement('div');f.className='fa';f.dataset.t=t;f.innerHTML=faceSVG(n);cube.appendChild(f)}
+  wrap.appendChild(cube);D3.appendChild(sh);D3.appendChild(wrap);
+  wrap._cube=cube;wrap._sh=sh;return wrap;
+}
+const CUBES=[makeCube(),makeCube()];
+function sizeCubes(){
+  const k=APP.clientWidth/R.W,s=Math.round(DS*k*.92);
+  for(const w of CUBES){w._s=s;w.style.width=w.style.height=s+'px';w.style.marginLeft=w.style.marginTop=(-s/2)+'px';
+    w._sh.style.width=w._sh.style.height=(s*1.5)+'px';w._sh.style.marginLeft=w._sh.style.marginTop=(-s*.75)+'px';
+    for(const f of w._cube.children){f.style.transform=f.classList.contains('co')?`${f.dataset.t} translateZ(0)`:`${f.dataset.t} translateZ(${s/2}px)`}}
+}
+function poseCube(w,x,y,z,rx,ry,rz){ // x,y — координаты доски
+  const k=APP.clientWidth/R.W,X=x*k,Y=y*k;
+  w.style.transform=`translate3d(${X}px,${Y}px,${z}px) rotateZ(${rz}deg) rotateX(${rx}deg) rotateY(${ry}deg)`;
+  const lift=Math.max(0,z)/(w._s||40);
+  w._sh.style.transform=`translate(${X+lift*14}px,${Y+lift*22}px) scale(${1+lift*.35})`;w._sh.style.opacity=Math.max(.15,.75-lift*.35);
+}
+function showCubes(on){for(const w of CUBES){w.style.display=on?'':'none';w._sh.style.display=on?'':'none'}}
 function drawDice(){
-  if(!G.dice.length){GD.innerHTML='';return}
-  const ps=dicePos(G.turn),dbl=G.dice[0]===G.dice[1];let h='';
-  G.dice.forEach((n,i)=>{const dim=!dbl&&G.rolled&&!G.left.includes(n);
-    h+=`<g class="die" style="transform:translate(${ps[i].x}px,${ps[i].y}px) rotate(${ps[i].r}deg)">${dieSVG(n,dim)}</g>`});
-  if(dbl&&G.rolled){const x=(ps[0].x+ps[1].x)/2,y=R.H/2+52;for(let i=0;i<4;i++)h+=`<circle cx="${x-27+i*18}" cy="${y}" r="6" fill="${i<G.left.length?'#fff':'rgba(255,255,255,.25)'}" stroke="rgba(0,0,0,.35)"/>`}
+  let h='';
+  if(!G.dice.length){showCubes(false);GD.innerHTML='';return}
+  showCubes(true);
+  const ps=dicePos(G.turn),dbl=G.dice[0]===G.dice[1];
+  G.dice.forEach((n,i)=>{const[rx,ry]=FACEROT[n],w=CUBES[i];poseCube(w,ps[i].x,ps[i].y,0,rx,ry,ps[i].r);
+    w.classList.toggle('dim',!dbl&&G.rolled&&!G.left.includes(n))});
+  if(dbl&&G.rolled){const x=(ps[0].x+ps[1].x)/2,y=R.H/2+56;for(let i=0;i<4;i++)h+=`<circle cx="${x-27+i*18}" cy="${y}" r="6" fill="${i<G.left.length?'#fff':'rgba(255,255,255,.25)'}" stroke="rgba(0,0,0,.35)"/>`}
   GD.innerHTML=h;
 }
 function rollAnim(c,done,res){
-  const ps=dicePos(c),dir=c==='L'?1:-1,fromX=c==='L'?R.L0-50:R.R0+R.hw+50,DUR=1250;
-  GD.innerHTML='';
-  const ds=[0,1].map(i=>{const g=document.createElementNS(NS,'g');GD.appendChild(g);
-    const sy=R.H/2+(i?-80:80),p=ps[i],spin=(2.6+Math.random()*.8+i*.4)*360*dir;
-    return{g,sx:fromX,sy,ex:p.x,ey:p.y,er:p.r,spin,face:1+Math.random()*6|0,last:-1,res:res[i]}});
-  const ease=t=>1-Math.pow(1-t,3);
+  GD.innerHTML='';showCubes(true);
+  const ps=dicePos(c),dir=c==='L'?1:-1,fromX=c==="L"?R.L0-40:R.R0+R.hw+40,DUR=1900;
+  const ds=CUBES.map((w,i)=>{w.classList.remove('dim');const p=ps[i],[fx,fy]=FACEROT[res[i]];
+    return{w,sx:fromX,sy:R.H/2+(i?-90:90),ex:p.x,ey:p.y,er:p.r,fx,fy,
+      tx:(3+(Math.random()*2|0)+i)*360*(Math.random()<.5?1:-1),ty:(2+(Math.random()*2|0))*360*dir,tz:(1+Math.random())*180*dir}});
+  const ease=t=>1-Math.pow(1-t,2.2);
   const t0=performance.now();
   const fr=now=>{
     const t=Math.min(1,(now-t0)/DUR),e=ease(t);
     for(const d of ds){
-      const x=d.sx+(d.ex-d.sx)*e;
-      // два затухающих подскока
-      const hop=Math.abs(Math.sin(e*Math.PI*2.2))*(1-e)*46;
-      const y=d.sy+(d.ey-d.sy)*e-hop;
-      const rot=d.er+d.spin*(1-e);
-      const sc=1+.12*(1-e)*Math.abs(Math.sin(e*Math.PI*2.2));
-      const q=Math.floor(Math.abs(d.spin*(1-e))/90);
-      if(q!==d.last){d.last=q;d.face=t>.82?d.res:(d.face%6)+1+(Math.random()*4|0);if(d.face>6)d.face-=6;d.g.innerHTML=dieSVG(t>.82?d.res:d.face)}
-      d.g.setAttribute('transform',`translate(${x} ${y}) rotate(${rot}) scale(${sc})`);
+      const x=d.sx+(d.ex-d.sx)*e,y=d.sy+(d.ey-d.sy)*e;
+      // высота над доской: бросок вверх и два затухающих отскока
+      const h=t<.38?Math.sin(t/.38*Math.PI)*170:t<.66?Math.sin((t-.38)/.28*Math.PI)*60:t<.84?Math.sin((t-.66)/.18*Math.PI)*16:0;
+      const r=1-e;
+      poseCube(d.w,x,y,h*(d.w._s/60),d.fx+d.tx*r,d.fy+d.ty*r,d.er+d.tz*r);
     }
-    if(t<1)requestAnimationFrame(fr);else{ds.forEach(d=>d.g.innerHTML=dieSVG(d.res));setTimeout(done,120)}
+    if(t<1)requestAnimationFrame(fr);else setTimeout(done,120);
   };requestAnimationFrame(fr);
 }
 /* ---------- подсветка ---------- */
@@ -413,7 +451,7 @@ function fit(){
   const w=innerWidth,h=innerHeight;
   if(h>w){APP.style.width=h+'px';APP.style.height=w+'px';APP.style.transform=`translate(${w}px,0) rotate(90deg)`}
   else{APP.style.width=w+'px';APP.style.height=h+'px';APP.style.transform='none'}
-  geo();drawBoard();CK.forEach(g=>{g._tp=null;g._p=null});render(false);
+  geo();sizeCubes();drawBoard();CK.forEach(g=>{g._tp=null;g._p=null});render(false);
 }
 addEventListener('resize',()=>{clearTimeout(fit.t);fit.t=setTimeout(fit,60)});
 makeCheckers();
@@ -427,7 +465,7 @@ if(!G.over){
 }
 </script>
 <script>
-const VER='17';
+const VER='18';
 function checkVer(){fetch('../version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('nardy_upd')===v)return;sessionStorage.setItem('nardy_upd',v)}catch(_){}
