@@ -1,6 +1,6 @@
 // Офлайн-кэш «Косынки»: страница открывается сразу из памяти телефона,
 // новая версия скачивается в фоне, и открытая игра сама перезагружается (партия сохраняется).
-const C = 'kosynka-v2';
+const C = 'kosynka-v3';
 const SCOPE = self.registration.scope;
 const PAGE = SCOPE;
 const CORE = [SCOPE, SCOPE + 'index.html', SCOPE + 'apple-touch-icon.png'];
@@ -19,7 +19,7 @@ async function refreshPage() {
   try {
     const c = await caches.open(C);
     const old = await c.match(PAGE);
-    const r = await fetch(PAGE, { cache: 'no-store' });
+    const r = await fetch(PAGE + '?t=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) return;
     const text = await r.clone().text();
     const changed = old ? (await old.text()) !== text : false;
@@ -33,6 +33,13 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.pathname.endsWith('version.txt')) return;
+  if (req.mode === 'navigate' && url.searchParams.has('v')) {
+    e.respondWith(fetch(SCOPE + '?t=' + Date.now(), { cache: 'no-store' }).then(async r => {
+      if (r.ok) { const c = await caches.open(C); await c.put(PAGE, r.clone()); await c.put(SCOPE + 'index.html', r.clone()); }
+      return r;
+    }).catch(() => caches.match(PAGE)));
+    return;
+  }
   if (req.mode === 'navigate') {
     e.respondWith(caches.open(C).then(async c => {
       const hit = await c.match(PAGE) || await c.match(SCOPE + 'index.html');
