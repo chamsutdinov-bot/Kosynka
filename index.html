@@ -83,6 +83,7 @@ nav svg{width:26px;height:26px}
   <div class="row">Рубашка<div class="seg" id="sb"><button data-v="red">красная</button><button data-v="blue">синяя</button></div></div>
 </div></div>
 <div id="toast"></div>
+<canvas id="fw" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1000;display:none"></canvas>
 <script>
 {
 // Картинки J/Q/K — из классической колоды Vector Playing Cards (Byron Knoll, общественное достояние)
@@ -121,7 +122,7 @@ function newGame(){
   S={p:{},up:Array(52).fill(false),score:0,moves:0,time:0,won:false,counted:false};
   for(const p of P)S.p[p]=[];
   for(let i=0;i<7;i++){for(let k=0;k<=i;k++)S.p['t'+i].push(d.pop());S.up[S.p['t'+i].at(-1)]=true}
-  S.p.st=d;hist=[];stopAuto();
+  S.p.st=d;hist=[];stopAuto();fireworks.stop=true;
   document.querySelectorAll('.ov').forEach(o=>o.classList.remove('on'));render();save();
 }
 const fmt=t=>`${t/60|0}:${String(t%60).padStart(2,'0')}`;
@@ -179,11 +180,28 @@ function autoMove(f,i){
   if(!(f[0]=='t'&&i==0))for(const t of ts)if(!S.p[t].length&&can(id,n,t))return mv(f,i,t);
   nudge(id);
 }
+function fireworks(){
+  const cv=$('fw'),cx=cv.getContext('2d'),dpr=devicePixelRatio||1;let W,H,ps=[],t0=performance.now(),last=0;
+  const size=()=>{W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;cx.setTransform(dpr,0,0,dpr,0,0)};size();
+  cv.style.display='block';fireworks.stop=false;
+  const COL=['#ffd54a','#ff5a5f','#5ad1ff','#7dff7a','#ff8cf0','#ffffff','#ffa53d'];
+  const boom=()=>{const x=W*(.15+Math.random()*.7),y=H*(.12+Math.random()*.4),c=COL[Math.random()*COL.length|0],n=60+Math.random()*30|0;
+    for(let i=0;i<n;i++){const a=Math.PI*2*i/n,v=1.6+Math.random()*2.6;ps.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1,c})}};
+  const fr=now=>{
+    if(fireworks.stop){cv.style.display='none';return}
+    const el=now-t0;if(el<4200&&now-last>380){boom();if(Math.random()<.5)boom();last=now}
+    cx.clearRect(0,0,W,H);
+    for(const p of ps){p.x+=p.vx;p.y+=p.vy;p.vy+=.045;p.vx*=.985;p.vy*=.985;p.l-=.012;
+      if(p.l>0){cx.globalAlpha=p.l;cx.fillStyle=p.c;cx.beginPath();cx.arc(p.x,p.y,2.8,0,7);cx.fill()}}
+    cx.globalAlpha=1;ps=ps.filter(p=>p.l>0);
+    if(el<4200||ps.length)requestAnimationFrame(fr);else cv.style.display='none';
+  };requestAnimationFrame(fr);
+}
 function check(){
   if(FP.every(f=>S.p[f].length==13)){
     stopAuto();S.won=true;G.won++;if(!G.best||S.time<G.best)G.best=S.time;if(S.score>G.top)G.top=S.score;saveO();save();stat();
     $('wt').textContent=`Время ${fmt(S.time)} · ${S.score} очков · ${S.moves} ходов`;
-    setTimeout(()=>$('ow').classList.add('on'),400);return;
+    fireworks();setTimeout(()=>$('ow').classList.add('on'),1600);return;
   }
   if(!auto&&!stepping&&!S.p.st.length&&!S.p.wa.length&&TP.every(t=>S.p[t].every(c=>S.up[c])))auto=setInterval(step,110);
 }
@@ -299,7 +317,7 @@ if(load()){render();if(!S.won)check()}else newGame();
 }
 </script>
 <script>
-const VER='8';
+const VER='9';
 function checkVer(){fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('kos_upd')===v)return;sessionStorage.setItem('kos_upd',v)}catch(_){}
