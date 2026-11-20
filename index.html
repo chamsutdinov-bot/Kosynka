@@ -69,6 +69,18 @@ nav svg{width:26px;height:26px}
 #toast{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:998}
 @media (orientation:landscape){header{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}#b{margin-left:max(6px,env(safe-area-inset-left));margin-right:max(6px,env(safe-area-inset-right))}nav{margin-left:max(8px,env(safe-area-inset-left));margin-right:max(8px,env(safe-area-inset-right))}}
 @media (prefers-reduced-motion:reduce){.c{transition:none}}
+/* === стиль «стекло» === */
+nav{background:rgba(255,255,255,.12)!important;-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);border:1px solid rgba(255,255,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 8px 24px rgba(0,0,0,.25);border-radius:22px!important}
+.sl{background:linear-gradient(160deg,rgba(255,255,255,.18),rgba(255,255,255,.04))!important;border:1px solid rgba(255,255,255,.3);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px rgba(0,0,0,.18)!important;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.c:not(.d)::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(155deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 30%);pointer-events:none;z-index:2}
+.c{box-shadow:0 2px 8px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,255,255,.6)!important}
+.c.d::after{background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.35) 1.2px,transparent 1.6px) 0 0/7px 7px,linear-gradient(155deg,rgba(255,255,255,.45),rgba(255,255,255,0) 45%),repeating-linear-gradient(45deg,var(--b1) 0 3px,var(--b2) 3px 6px)!important}
+.pop{background:rgba(255,255,255,.22)!important;color:#fff!important;-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 12px 40px rgba(0,0,0,.35)!important;border-radius:22px!important}
+.pop p,.pop .row{color:rgba(255,255,255,.9)!important}
+.pop .go{background:rgba(255,255,255,.25)!important;border:1px solid rgba(255,255,255,.45)!important}
+.seg{background:rgba(255,255,255,.18)!important}.seg button{color:#fff!important}.seg button.on{background:rgba(255,255,255,.45)!important;color:#123!important}
+.ov{background:rgba(0,0,0,.2)!important}
+header{background:linear-gradient(rgba(255,255,255,.10),rgba(255,255,255,0))}
 </style></head><body>
 <header><h1>Косынка</h1><div id="st">0:00 · 0 очк.</div></header>
 <div id="pull">Потяните — обновить</div>
@@ -317,7 +329,7 @@ if(load()){render();if(!S.won)check()}else newGame();
 }
 </script>
 <script>
-const VER='9';
+const VER='10';
 function checkVer(){fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('kos_upd')===v)return;sessionStorage.setItem('kos_upd',v)}catch(_){}
