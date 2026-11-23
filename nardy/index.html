@@ -355,19 +355,29 @@ function rollAnim(c,done,res){
   };requestAnimationFrame(fr);
 }
 /* ---------- подсветка ---------- */
+function conePath(a){
+  const pw=R.pw,cap=pw*.5,x=colX(a),c=x+pw/2,col=a<12?a:23-a,len=R.ih*(col%2===0?.36:.31),tp=isTop(a),sg=tp?1:-1,yb=tp?R.top:R.bot;
+  const y1=yb+sg*cap*1.6,y0=yb+sg*cap*1.08,tip=yb+sg*len;
+  return `M${x+pw*.05} ${y1} Q${c} ${y0} ${x+pw*.95} ${y1} Q${c+pw*.18} ${(y1+tip)/2} ${c+1.2} ${tip} L${c-1.2} ${tip} Q${c-pw*.18} ${(y1+tip)/2} ${x+pw*.05} ${y1}Z`;
+}
+let HOV=null; // {t: номер лунки или 'off', ok: true/false} — куда сейчас целится палец
 function drawHL(){
   let h='';
-  if(sel!==null){
-    const ids=G.pts[sel],p=stackPos(sel,ids.length-1,ids.length);
-    h+=`<circle cx="${p.x}" cy="${p.y}" r="${R.cr+4}" fill="none" stroke="#ffd54a" stroke-width="4"/>`;
-    for(const st of legal.filter(s=>s.a===sel)){
-      if(st.to==='off'){const L=G.turn==='L';h+=`<rect x="4" y="${L?R.top:R.H/2}" width="${R.F+R.mx+4}" height="${R.ih/2}" rx="8" fill="rgba(255,213,74,.35)" stroke="#ffd54a" stroke-width="3"/>`;if(!L)h=h.replace(`x="4" y="${R.H/2}"`,`x="${R.R0+R.hw-R.mx}" y="${R.H/2}"`);continue}
-      const x=colX(st.to),tp=isTop(st.to);h+=`<rect x="${x+2}" y="${tp?R.top+2:R.H/2+6}" width="${R.pw-4}" height="${R.ih/2-8}" rx="10" fill="rgba(255,213,74,.22)" stroke="#ffd54a" stroke-width="3"/>`;
-    }
-  }else if(G.rolled&&!busy&&human(G.turn)){
-    for(const a of uniq(legal.map(s=>s.a))){const ids=G.pts[a],p=stackPos(a,ids.length-1,ids.length);h+=`<circle cx="${p.x}" cy="${p.y}" r="${R.cr+3}" fill="none" stroke="rgba(255,213,74,.85)" stroke-width="3"/>`}
+  if(HOV){
+    const col=HOV.ok?'#2fd15a':'#ff3b30';
+    if(HOV.t==='off'){const L=G.turn==='L';h+=`<rect x="${L?R.L0:R.R0+R.hw-R.pw*.75}" y="${L?R.top:R.H/2}" width="${R.pw*.75}" height="${R.ih/2}" rx="8" fill="${col}" opacity=".55"/>`}
+    else h+=`<path d="${conePath(HOV.t)}" fill="${col}" opacity=".85" style="filter:drop-shadow(0 0 6px ${col})"/>`;
   }
   GH.innerHTML=h;
+}
+function setHov(t,src){
+  const n=t===null||t===src?null:{t,ok:legal.some(s=>s.a===src&&s.to===t)};
+  if(JSON.stringify(n)!==JSON.stringify(HOV)){HOV=n;drawHL()}
+}
+function flash(t,ok,ms){HOV={t,ok};drawHL();clearTimeout(flash.t);flash.t=setTimeout(()=>{HOV=null;drawHL()},ms||450)}
+function lift(on){ // выбранная тапом шашка чуть приподнята (без жёлтых подсказок)
+  for(const g of CK)if(g._lift){g._lift=false;if(g._p)g.style.transform=`translate(${g._p.x}px,${g._p.y}px)`}
+  if(on!==null&&on!==undefined&&G.pts[on].length){const g=CK[G.pts[on][G.pts[on].length-1]];g._lift=true;GC.appendChild(g);g.style.transform=`translate(${g._p.x}px,${g._p.y-6}px) scale(1.1)`}
 }
 function render(anim){place(anim);drawDice();drawHL();$('mUndo').disabled=!undo.length}
 function toast(t,ms){const e=$('toast');e.textContent=t;e.style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.opacity=0,ms||1400)}
@@ -436,11 +446,12 @@ SV.addEventListener('pointerdown',e=>{
 });
 SV.addEventListener('pointermove',e=>{
   if(!DR)return;
-  if(!DR.on){if(Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)<8)return;DR.on=true;sel=DR.a;drawHL();GC.appendChild(CK[DR.id]);CK[DR.id].querySelector('.fc').style.display=''}
+  if(!DR.on){if(Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)<8)return;DR.on=true;lift(null);sel=DR.a;GC.appendChild(CK[DR.id]);CK[DR.id].querySelector('.fc').style.display=''}
   const {x,y}=svgPt(e),g=CK[DR.id];DR.x=x+DR.dx;DR.y=y+DR.dy;
+  setHov(offZone(x,y)?'off':hitPoint(x,y),DR.a);
   g.style.transform=`translate(${DR.x}px,${DR.y}px) scale(1.12)`;
 });
-SV.addEventListener('pointercancel',()=>{if(DR&&DR.on){DR=null;sel=null;render(false)}DR=null;downAt=null});
+SV.addEventListener('pointercancel',()=>{if(DR&&DR.on){DR=null;sel=null;HOV=null;render(false)}DR=null;downAt=null});
 SV.addEventListener('pointerup',e=>{
   if(!downAt)return;
   if(DR&&DR.on){ // перетаскивание шашки пальцем
@@ -449,7 +460,8 @@ SV.addEventListener('pointerup',e=>{
     let st=null;
     if(offZone(x,y))st=legal.find(s=>s.a===d.a&&s.to==='off');
     if(!st){const t=hitPoint(x,y);if(t!==null)st=legal.find(s=>s.a===d.a&&s.to===t)}
-    if(st){doStep(st)}else{sel=null;render(true)}
+    const tgt=offZone(x,y)?'off':hitPoint(x,y);HOV=null;
+    if(st){doStep(st);flash(st.to,true,350)}else{sel=null;render(true);if(tgt!==null&&tgt!==d.a)flash(tgt,false)}
     return;
   }
   DR=null;
@@ -461,14 +473,12 @@ SV.addEventListener('pointerup',e=>{
   if(sw)return;
   // выброс
   if(sel!==null){const off=legal.find(s=>s.a===sel&&s.to==='off');
-    if(off){const L=G.turn==='L';if(L?(x<R.L0+R.mx&&y<R.H/2):(x>R.R0+R.hw-R.mx&&y>R.H/2)){doStep(off);return}}}
-  const a=hitPoint(x,y);if(a===null){sel=null;drawHL();return}
-  if(sel!==null){const st=legal.find(s=>s.a===sel&&s.to===a);if(st){doStep(st);return}}
-  if(legal.some(s=>s.a===a)){
-    // если ход одним вариантом (например, только выброс) — всё равно выделяем, второй тап делает ход
-    sel=sel===a?null:a;
-  }else sel=null;
-  drawHL();
+    if(offZone(x,y)){if(off){lift(null);doStep(off);flash('off',true,350)}else flash('off',false);return}}
+  const a=hitPoint(x,y);if(a===null){sel=null;lift(null);return}
+  if(sel!==null&&a!==sel){const st=legal.find(s=>s.a===sel&&s.to===a);
+    if(st){lift(null);doStep(st);flash(a,true,350);return}
+    if(!legal.some(s=>s.a===a)){flash(a,false);return}}
+  if(legal.some(s=>s.a===a)){sel=sel===a?null:a;lift(sel)}else{sel=null;lift(null)}
 });
 
 /* ---------- меню ---------- */
@@ -515,7 +525,7 @@ if(!G.over){
 }
 </script>
 <script>
-const VER='23';
+const VER='24';
 function checkVer(){fetch('../version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null).then(v=>{
   v=v&&v.trim();if(!v||v===VER)return;
   try{if(sessionStorage.getItem('nardy_upd')===v)return;sessionStorage.setItem('nardy_upd',v)}catch(_){}
